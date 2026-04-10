@@ -1,0 +1,77 @@
+{
+  "groups": [
+    {
+      "name": "低波",
+      "type": "基金",
+      "benchmark_code": null,
+      "benchmark_name": null,
+      "inception_start_date": null
+    },
+    {
+      "name": "中波",
+      "type": "基金",
+      "benchmark_code": null,
+      "benchmark_name": null,
+      "inception_start_date": null
+    },
+    {
+      "name": "高波",
+      "type": "基金",
+      "benchmark_code": null,
+      "benchmark_name": null,
+      "inception_start_date": null
+    },
+    {
+      "name": "沪深300指增",
+      "type": "股指",
+      "benchmark_code": "000300.SH",
+      "benchmark_name": "沪深300",
+      "inception_start_date": "2020-11-03"
+    },
+    {
+      "name": "中证500指增",
+      "type": "股指",
+      "benchmark_code": "000905.SH",
+      "benchmark_name": "中证500",
+      "inception_start_date": "2015-02-16"
+    },
+    {
+      "name": "中证800指增",
+      "type": "股指",
+      "benchmark_code": "000906.SH",
+      "benchmark_name": "中证800",
+      "inception_start_date": "2023-05-19"
+    },
+    {
+      "name": "中证A500指增",
+      "type": "股指",
+      "benchmark_code": "000510.CSI",
+      "benchmark_name": "中证A500",
+      "inception_start_date": "2025-03-27"
+    },
+    {
+      "name": "中证1000指增",
+      "type": "股指",
+      "benchmark_code": "000852.SH",
+      "benchmark_name": "中证1000",
+      "inception_start_date": "2023-05-19"
+    },
+    {
+      "name": "国证2000指增",
+      "type": "股指",
+      "benchmark_code": "399303.SZ",
+      "benchmark_name": "国证2000",
+      "inception_start_date": "2023-11-07"
+    }
+  ],
+  "snapshot_dates": [
+    "2025-12-31",
+    "2026-01-30",
+    "2026-02-27",
+    "2026-03-31",
+    "2026-04-09"
+  ],
+  "latest_date": "2026-04-09",
+  "updated_at": "2026-04-10T15:30:16.983885",
+  "data_version": 1
+}
