@@ -78,6 +78,8 @@ tbody tr.expanded { background: #f0f3ff; }
 .fund-name:hover { text-decoration: underline; }
 
 .ai-summary { display: none; margin-bottom: 12px; padding: 12px 16px; padding-right: 80px; background: #fff; border-left: 4px solid #4361ee; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); position: relative; }
+.ai-summary-title { font-size: 13px; font-weight: 600; color: #4361ee; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.ai-summary-title::before { content: '✨'; font-size: 14px; }
 .ai-summary-text { font-size: 13px; line-height: 1.7; color: #444; white-space: pre-wrap; }
 .ai-summary-loading { font-size: 13px; color: #aaa; }
 .ai-summary-regen { position: absolute; top: 10px; right: 12px; background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 2px 8px; font-size: 11px; color: #888; cursor: pointer; white-space: nowrap; }
@@ -119,6 +121,7 @@ tbody tr.expanded { background: #f0f3ff; }
 
 <div class="ai-summary" id="ai-summary">
     <button class="ai-summary-regen" onclick="regenSummary()">重新生成</button>
+    <div class="ai-summary-title">AI智能总结</div>
     <div class="ai-summary-text" id="ai-summary-text"></div>
 </div>
 
