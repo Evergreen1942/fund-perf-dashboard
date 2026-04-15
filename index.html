@@ -653,6 +653,50 @@ function loadChart(code) {
         });
 }
 
+// 按可见范围计算动态回撤：peak 从 startIdx 开始重置
+// 返回与 navs 等长的数组，范围外填 '-'
+function computeDrawdownInRange(navs, startIdx, endIdx) {
+    let result = new Array(navs.length).fill('-');
+    let peak = -Infinity;
+    for (let i = startIdx; i <= endIdx; i++) {
+        if (navs[i] > peak) peak = navs[i];
+        if (peak > 0) {
+            result[i] = +((navs[i] - peak) / peak * 100).toFixed(2);
+        }
+    }
+    return result;
+}
+
+// 按可见范围计算超额收益：以 startIdx 首个有效日期为锚点
+function computeExcessInRange(dates, navs, benchAligned, startIdx, endIdx) {
+    let result = new Array(navs.length).fill('-');
+    // 找可见范围内第一个 fund 和 bench 都有数据的日期
+    let anchorIdx = -1;
+    for (let i = startIdx; i <= endIdx; i++) {
+        if (typeof navs[i] === 'number' && typeof benchAligned[i] === 'number') {
+            anchorIdx = i;
+            break;
+        }
+    }
+    if (anchorIdx < 0) return result;
+    let f0 = navs[anchorIdx];
+    let b0 = benchAligned[anchorIdx];
+    if (!f0 || !b0) return result;
+    for (let i = anchorIdx; i <= endIdx; i++) {
+        if (typeof navs[i] === 'number' && typeof benchAligned[i] === 'number') {
+            let fCum = navs[i] / f0 - 1;
+            let bCum = benchAligned[i] / b0 - 1;
+            result[i] = +((fCum - bCum) * 100).toFixed(3);
+        }
+    }
+    return result;
+}
+
+// 根据 dataZoom 的 start/end 百分比计算索引
+function dzPercentToIdx(percent, total) {
+    return Math.round(percent / 100 * (total - 1));
+}
+
 function renderChart(code, data) {
     let el = document.getElementById(`chart-${code}`);
     if (!el) return;
@@ -660,6 +704,7 @@ function renderChart(code, data) {
     chartInstance = echarts.init(el);
     let dates = data.data.map(d => d.date);
     let navs = data.data.map(d => d.nav);
+    let benchAligned = data.benchmark_nav_aligned || [];
     let fund = funds.find(f => f.code === code);
 
     // 净值左轴配置（scale:true 让轴紧贴可见数据范围）
@@ -671,16 +716,26 @@ function renderChart(code, data) {
         splitLine: { show: false }
     };
 
+    // 先确定默认显示近1年的索引范围（用于初始 overlay 计算）
+    let startVal, endVal;
+    if (dates.length > 0) {
+        endVal = dates[dates.length - 1];
+        let d = new Date(endVal);
+        d.setFullYear(d.getFullYear() - 1);
+        startVal = d.toISOString().slice(0, 10);
+    }
+    let initStartIdx = dates.length - 1, initEndIdx = dates.length - 1;
+    for (let i = 0; i < dates.length; i++) {
+        if (dates[i] >= startVal) { initStartIdx = i; break; }
+    }
+
     let yAxisRight, overlaySeries, tooltipExtra;
 
     if (chartOverlay === 'drawdown') {
-        // 动态回撤
-        let drawdowns = [], peak = -Infinity;
-        for (let i = 0; i < navs.length; i++) {
-            if (navs[i] > peak) peak = navs[i];
-            drawdowns.push(+((navs[i] - peak) / peak * 100).toFixed(2));
-        }
-        let minDD = Math.min(...drawdowns);
+        // 动态回撤（按可见范围重置 peak）
+        let drawdowns = computeDrawdownInRange(navs, initStartIdx, initEndIdx);
+        let validDDs = drawdowns.filter(v => v !== '-');
+        let minDD = validDDs.length ? Math.min(...validDDs) : -10;
         let ddMin = minDD * 1.5;
         yAxisRight = {
             type: 'value', position: 'right', max: 0, min: ddMin,
@@ -695,7 +750,7 @@ function renderChart(code, data) {
             areaStyle: { color: 'rgba(91,143,249,0.3)' },
             showSymbol: false, z: 1
         };
-        tooltipExtra = (item) => `回撤: ${item.value.toFixed(2)}%`;
+        tooltipExtra = (item) => (typeof item.value === 'number') ? `回撤: ${item.value.toFixed(2)}%` : null;
 
     } else if (chartOverlay === 'quarterly_aum') {
         // 季末规模柱状图 — 用 '-' 替代 null
@@ -746,11 +801,8 @@ function renderChart(code, data) {
         tooltipExtra = (item) => (typeof item.value === 'number') ? `滚动1Y收益: ${item.value.toFixed(2)}%` : null;
 
     } else if (chartOverlay === 'excess') {
-        // 超额收益：相对基准指数的累计收益差（百分比）
-        // data.excess_return = [{date, excess}, ...]，注意可能与主净值序列日期不完全对齐
-        let excessMap = {};
-        (data.excess_return || []).forEach(e => { excessMap[e.date] = e.excess; });
-        let excessData = dates.map(d => d in excessMap ? excessMap[d] : '-');
+        // 超额收益：按可见范围内第一个有效日期为锚点，计算相对基准的累计差
+        let excessData = computeExcessInRange(dates, navs, benchAligned, initStartIdx, initEndIdx);
         let validVals = excessData.filter(v => v !== '-');
         if (validVals.length === 0) { validVals = [0]; }
         let eMin = Math.min(...validVals, 0);
@@ -773,22 +825,11 @@ function renderChart(code, data) {
         tooltipExtra = (item) => (typeof item.value === 'number') ? `超额收益: ${item.value.toFixed(2)}%` : null;
     }
 
-    // 计算默认显示近1年的范围
-    let startVal, endVal;
-    if (dates.length > 0) {
-        endVal = dates[dates.length - 1];
-        let d = new Date(endVal);
-        d.setFullYear(d.getFullYear() - 1);
-        startVal = d.toISOString().slice(0, 10);
-    }
-
-    // 根据可见范围动态计算Y轴min/max
-    function calcVisibleNavRange(startDate, endDate) {
+    // 根据可见范围动态计算 Y 轴 min/max（用索引范围）
+    function calcVisibleNavRangeByIdx(sIdx, eIdx) {
         let visNavs = [];
-        for (let i = 0; i < dates.length; i++) {
-            if (dates[i] >= startDate && dates[i] <= endDate && typeof navs[i] === 'number') {
-                visNavs.push(navs[i]);
-            }
+        for (let i = sIdx; i <= eIdx; i++) {
+            if (typeof navs[i] === 'number') visNavs.push(navs[i]);
         }
         if (!visNavs.length) return { min: undefined, max: undefined };
         let mn = Math.min(...visNavs), mx = Math.max(...visNavs);
@@ -796,7 +837,7 @@ function renderChart(code, data) {
         return { min: +(mn - pad).toFixed(4), max: +(mx + pad).toFixed(4) };
     }
 
-    let visRange = calcVisibleNavRange(startVal || dates[0], endVal || dates[dates.length - 1]);
+    let visRange = calcVisibleNavRangeByIdx(initStartIdx, initEndIdx);
     yAxisLeft.min = visRange.min;
     yAxisLeft.max = visRange.max;
 
@@ -824,7 +865,7 @@ function renderChart(code, data) {
         yAxis: [yAxisLeft, yAxisRight],
         dataZoom: [
             { type: 'slider', xAxisIndex: 0, bottom: 10, height: 25, borderColor: '#ccc', fillerColor: 'rgba(67,97,238,0.15)', filterMode: 'none',
-              startValue: startVal, endValue: endVal }
+              startValue: dates[initStartIdx], endValue: dates[initEndIdx] }
         ],
         series: [
             {
@@ -836,19 +877,44 @@ function renderChart(code, data) {
         ]
     });
 
-    // dataZoom变化时动态调整Y轴范围
+    // dataZoom 变化时动态调整 Y 轴 + 重算 overlay 数据
     chartInstance.on('datazoom', function() {
         let opt = chartInstance.getOption();
         let dz = opt.dataZoom[0];
-        let startIdx = Math.floor(dz.start / 100 * (dates.length - 1));
-        let endIdx = Math.ceil(dz.end / 100 * (dates.length - 1));
-        startIdx = Math.max(0, startIdx);
-        endIdx = Math.min(dates.length - 1, endIdx);
-        let sDate = dates[startIdx], eDate = dates[endIdx];
-        let vr = calcVisibleNavRange(sDate, eDate);
-        chartInstance.setOption({
-            yAxis: [{ min: vr.min, max: vr.max }, {}]
-        }, { lazyUpdate: true });
+        let startIdx = Math.max(0, Math.floor(dz.start / 100 * (dates.length - 1)));
+        let endIdx = Math.min(dates.length - 1, Math.ceil(dz.end / 100 * (dates.length - 1)));
+
+        // 净值 Y 轴
+        let vr = calcVisibleNavRangeByIdx(startIdx, endIdx);
+
+        // 根据当前 overlay 重算
+        let newOverlayData = null;
+        let newRightAxis = {};
+        if (chartOverlay === 'drawdown') {
+            newOverlayData = computeDrawdownInRange(navs, startIdx, endIdx);
+            let validDDs = newOverlayData.filter(v => v !== '-');
+            let minDD = validDDs.length ? Math.min(...validDDs) : -10;
+            newRightAxis = { min: minDD * 1.5, max: 0 };
+        } else if (chartOverlay === 'excess') {
+            newOverlayData = computeExcessInRange(dates, navs, benchAligned, startIdx, endIdx);
+            let validVals = newOverlayData.filter(v => v !== '-');
+            if (validVals.length === 0) validVals = [0];
+            let eMin = Math.min(...validVals, 0);
+            let eMax = Math.max(...validVals, 0);
+            let margin = (eMax - eMin) * 0.2 || 1;
+            newRightAxis = { min: eMin - margin, max: eMax + margin };
+        }
+
+        let opts = {
+            yAxis: [
+                { min: vr.min, max: vr.max },
+                Object.keys(newRightAxis).length ? newRightAxis : {}
+            ]
+        };
+        if (newOverlayData) {
+            opts.series = [{}, { data: newOverlayData }];
+        }
+        chartInstance.setOption(opts, { lazyUpdate: true });
     });
 }
 
