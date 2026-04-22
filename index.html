@@ -471,7 +471,14 @@ function loadSummary(retryCount) {
                 return;  // 历史日期无摘要是正常状态，不重试
             }
 
-            // 其他情况：摘要暂时没有（生成中或瞬时失败）
+            // 永久错误：立即停止重试（凭据/余额类问题，重试只是浪费时间）
+            if (data.error && data.error.indexOf('[PERMANENT]') >= 0) {
+                let cleanMsg = data.error.replace('[PERMANENT]', '').trim();
+                textEl.innerHTML = '<span class="ai-summary-loading">AI摘要暂不可用（配置问题，不自动重试）: ' + cleanMsg.substring(0, 200) + '</span>';
+                return;
+            }
+
+            // 其他情况（瞬时失败）：继续重试
             if (retryCount < MAX_RETRY) {
                 let nextTry = retryCount + 1;
                 let hintMsg = data.error
