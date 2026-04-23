@@ -430,13 +430,22 @@ function _summaryUrlParams() {
 }
 
 // AI 摘要加载：失败时自动静默重试（Claude Code 升级等瞬时错误常见）
-// 最多重试 20 次 × 30 秒 = 10 分钟
+// 渐进式重试间隔：前几次快（捕获后端刚生成完的情况），后面拉长间隔
+// 总窗口约 10 分钟，覆盖 Claude Code 升级 + _ensure_summaries 内部重试
 let _summaryRetryTimer = null;
+
+function _summaryRetryDelay(retryCount) {
+    // 头几次密集重试：覆盖 _ensure_summaries 的内部短重试窗口（30s + 60s）
+    if (retryCount < 3) return 5000;     //  3 × 5s   = 15s
+    if (retryCount < 6) return 10000;    //  3 × 10s  = 30s
+    if (retryCount < 10) return 20000;   //  4 × 20s  = 80s
+    return 30000;                        // 10 × 30s  = 300s
+    // 总:  15 + 30 + 80 + 300 = 425s ≈ 7 分钟
+}
 
 function loadSummary(retryCount) {
     retryCount = retryCount || 0;
     const MAX_RETRY = 20;       // 最多 20 次
-    const RETRY_INTERVAL = 30000; // 30 秒一次
 
     // 清除可能存在的旧重试计时器
     if (_summaryRetryTimer) { clearTimeout(_summaryRetryTimer); _summaryRetryTimer = null; }
@@ -481,11 +490,10 @@ function loadSummary(retryCount) {
             // 其他情况（瞬时失败）：继续重试
             if (retryCount < MAX_RETRY) {
                 let nextTry = retryCount + 1;
-                let hintMsg = data.error
-                    ? `AI摘要暂时不可用（${nextTry}/${MAX_RETRY}），将在 30 秒后自动重试…`
-                    : `AI摘要正在生成，${nextTry}/${MAX_RETRY} 自动重试中…`;
-                textEl.innerHTML = '<span class="ai-summary-loading">' + hintMsg + '</span>';
-                _summaryRetryTimer = setTimeout(() => loadSummary(nextTry), RETRY_INTERVAL);
+                let delay = _summaryRetryDelay(retryCount);
+                let secs = Math.round(delay / 1000);
+                textEl.innerHTML = '<span class="ai-summary-loading">AI摘要正在生成，' + nextTry + '/' + MAX_RETRY + '（' + secs + 's 后自动重试）…</span>';
+                _summaryRetryTimer = setTimeout(() => loadSummary(nextTry), delay);
             } else {
                 // 达到最大重试次数，显示详细错误
                 let msg = data.error || '长时间未生成成功';
@@ -496,8 +504,9 @@ function loadSummary(retryCount) {
             if (loadKey !== currentGroup + '|' + (selectedDate || '')) return;
             if (retryCount < MAX_RETRY) {
                 let nextTry = retryCount + 1;
+                let delay = _summaryRetryDelay(retryCount);
                 textEl.innerHTML = '<span class="ai-summary-loading">AI摘要连接中，' + nextTry + '/' + MAX_RETRY + ' 自动重试中…</span>';
-                _summaryRetryTimer = setTimeout(() => loadSummary(nextTry), RETRY_INTERVAL);
+                _summaryRetryTimer = setTimeout(() => loadSummary(nextTry), delay);
             } else {
                 textEl.innerHTML = '<span class="ai-summary-loading">AI摘要加载失败: ' + e + '</span>';
             }
